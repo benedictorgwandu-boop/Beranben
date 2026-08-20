@@ -4,6 +4,7 @@ from flask import Flask
 from threading import Thread
 import os
 import sqlite3
+import re  # Maktaba maalum ya kutafuta namba kwenye maandishi
 
 # ==========================================
 # 1. SEHEMU YA FLASK SERVER (KWA AJILI YA RENDER)
@@ -60,7 +61,7 @@ def hifadhi_data(salio, matumizi_leo):
 anzisha_db()
 
 # ==========================================
-# 3. SEHEMU YA DISCORD BOT (CHAT YA KAWAIDA)
+# 3. SEHEMU YA DISCORD BOT (CHAT RAHISI)
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -70,17 +71,16 @@ BAJETI_KWA_SIKU = 15000
 
 @bot.event
 async def on_ready():
-    print(f"🤖 Bot {bot.user.name} Ameshawaka na Kiswahili Mpya!")
+    print(f"🤖 Bot {bot.user.name} Ameshawaka na Mfumo wa Maelezo!")
 
 @bot.event
 async def on_message(message):
-    # Kuzuia bot asijijibu mwenyewe
     if message.author == bot.user:
         return
 
     ujumbe = message.content.lower().strip()
 
-    # 1. Kama unataka kuangalia SALIO LANGU
+    # 1. Kuangalia Salio: "salio langu" au "hali"
     if ujumbe == "salio langu" or ujumbe == "hali":
         salio, matumizi_leo = soma_data()
         baki = BAJETI_KWA_SIKU - matumizi_leo
@@ -92,27 +92,28 @@ async def on_message(message):
         await message.channel.send(ripoti)
         return
 
-    # 2. Kama unataka kuingiza pesa: TUMA 50000
+    # 2. Kuingiza Pesa: "tuma 5000" au "tuma 5000 ya mshahara"
     elif ujumbe.startswith("tuma "):
-        try:
-            kiasi_text = ujumbe.replace("tuma ", "").strip()
-            kiasi = float(kiasi_text)
-            
+        # Inatafuta namba yoyote kwenye ujumbe
+        namba = re.findall(r'\d+\.?\d*', ujumbe)
+        if namba:
+            kiasi = float(namba[0])
             salio, matumizi_leo = soma_data()
             salio += kiasi
             hifadhi_data(salio, matumizi_leo)
             await message.channel.send(f"✅ **MAPATO MPYA:** Tsh {kiasi:,.2f} imeingizwa. Salio jipya: Tsh {salio:,.2f}.")
-        except ValueError:
-            await message.channel.send("🛑 **Makosa:** Tafadhali weka kiasi kwa namba. Mfano: `tuma 5000`")
+        else:
+            await message.channel.send("🛑 **Makosa:** Sijaona kiasi cha fedha. Mfano: `tuma 5000 mshahara`")
         return
 
-    # 3. Kama unataka kurekodi matumizi: NIMETUMIA 5000
+    # 3. Kurekodi Matumizi: "nimetumia 200 chakula"
     elif ujumbe.startswith("nimetumia "):
-        try:
-            kiasi_text = ujumbe.replace("nimetumia ", "").strip()
-            kiasi = float(kiasi_text)
-            
+        # Inatafuta namba yoyote kwenye ujumbe
+        namba = re.findall(r'\d+\.?\d*', ujumbe)
+        if namba:
+            kiasi = float(namba[0])
             salio, matumizi_leo = soma_data()
+            
             if kiasi > salio:
                 await message.channel.send(f"🛑 **Haiwezekani!** Salio lako ni Tsh {salio:,.2f} tu. Punguza matumizi!")
                 return
@@ -127,11 +128,10 @@ async def on_message(message):
                 await message.channel.send(f"🚨 ONYO KALI: Umepitiliza bajeti ya leo ya Tsh {BAJETI_KWA_SIKU:,.2f}!", tts=True)
             
             await message.channel.send(jibu)
-        except ValueError:
-            await message.channel.send("🛑 **Makosa:** Tafadhali weka kiasi kwa namba. Mfano: `nimetumia 5000`")
+        else:
+            await message.channel.send("🛑 **Makosa:** Sijaona kiasi cha fedha kwenye ujumbe wako. Mfano: `nimetumia 200 chakula`")
         return
 
-    # Ruhusu amri zingine kama zipo
     await bot.process_commands(message)
 
 # ==========================================
