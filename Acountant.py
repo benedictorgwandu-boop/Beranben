@@ -22,7 +22,7 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 2. SEHEMU YA DATABASE (SQLITE) - BADALA YA TXT
+# 2. SEHEMU YA DATABASE (SQLITE)
 # ==========================================
 def anzisha_db():
     conn = sqlite3.connect("mhasibu.db")
@@ -34,9 +34,8 @@ def anzisha_db():
             matumizi_leo REAL
         )
     ''')
-    # Weka data za mwanzo kama hazipo
     cursor.execute("SELECT COUNT(*) FROM fedha")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone() == 0:
         cursor.execute("INSERT INTO fedha (id, salio, matumizi_leo) VALUES (1, 0.0, 0.0)")
     conn.commit()
     conn.close()
@@ -58,11 +57,10 @@ def hifadhi_data(salio, matumizi_leo):
     conn.commit()
     conn.close()
 
-# Anzisha database kodi inapowaka
 anzisha_db()
 
 # ==========================================
-# 3. SEHEMU YA DISCORD BOT
+# 3. SEHEMU YA DISCORD BOT (CHAT YA KAWAIDA)
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -72,56 +70,74 @@ BAJETI_KWA_SIKU = 15000
 
 @bot.event
 async def on_ready():
-    print(f"🤖 Bot {bot.user.name} Ameshawaka mtandaoni na anasikiliza simu yako!")
+    print(f"🤖 Bot {bot.user.name} Ameshawaka na Kiswahili Mpya!")
 
-# 1. Amri ya kuingiza pesa (!ingiza 50000)
-@bot.command()
-async def ingiza(ctx, kiasi: float):
-    salio, matumizi_leo = soma_data()
-    salio += kiasi
-    hifadhi_data(salio, matumizi_leo)
-    await ctx.send(f"✅ **MAPATO MPYA:** Tsh {kiasi:,.2f} imeingizwa. Salio jipya: Tsh {salio:,.2f}.")
-
-# 2. Amri ya kurekodi matumizi (!tumia 5000)
-@bot.command()
-async def tumia(ctx, kiasi: float):
-    salio, matumizi_leo = soma_data()
-    if kiasi > salio:
-        await ctx.send(f"🛑 **Haiwezekani!** Salio lako ni Tsh {salio:,.2f} tu. Punguza matumizi!")
+@bot.event
+async def on_message(message):
+    # Kuzuia bot asijijibu mwenyewe
+    if message.author == bot.user:
         return
-        
-    salio -= kiasi
-    matumizi_leo += kiasi
-    hifadhi_data(salio, matumizi_leo)
-    
-    jibu = f"💸 **ALERT MATUMIZI:** Umerekodi matumizi ya Tsh {kiasi:,.2f}.\n💰 Salio lililobaki: Tsh {salio:,.2f}."
-    if matumizi_leo > BAJETI_KWA_SIKU:
-        jibu += f"\n🚨 **ONYO KALI:** Umeshavuka kikomo cha leo cha Tsh {BAJETI_KWA_SIKU:,.2f}! Funga pochi yako! 🛑"
-        # TTS inafanya kazi vizuri kwenye simu pia ikitumwa kama ujumbe wa sauti wa roboti
-        await ctx.send(f"🚨 ONYO KALI: Umepitiliza bajeti ya leo ya Tsh {BAJETI_KWA_SIKU:,.2f}!", tts=True)
-    
-    await ctx.send(jibu)
 
-# 3. Amri ya kuangalia hali ya fedha (!hali)
-@bot.command()
-async def hali(ctx):
-    salio, matumizi_leo = soma_data()
-    baki = BAJETI_KWA_SIKU - matumizi_leo
-    ripoti = f"📊 **RIPOTI YA KIFEDHA:**\n💰 Salio: Tsh {salio:,.2f}\n📉 Umetumia Leo: Tsh {matumizi_leo:,.2f}"
-    if baki < 0:
-        ripoti += f"\n🛑 Umepandisha matumizi kwa Tsh {abs(baki):,.2f}!"
-    else:
-        ripoti += f"\n✅ Unaweza kutumia Tsh {baki:,.2f} zaidi leo."
-    await ctx.send(ripoti)
+    ujumbe = message.content.lower().strip()
+
+    # 1. Kama unataka kuangalia SALIO LANGU
+    if ujumbe == "salio langu" or ujumbe == "hali":
+        salio, matumizi_leo = soma_data()
+        baki = BAJETI_KWA_SIKU - matumizi_leo
+        ripoti = f"📊 **RIPOTI YA KIFEDHA:**\n💰 Salio la Sasa: Tsh {salio:,.2f}\n📉 Umetumia Leo: Tsh {matumizi_leo:,.2f}"
+        if baki < 0:
+            ripoti += f"\n🛑 Umepandisha matumizi kwa Tsh {abs(baki):,.2f}!"
+        else:
+            ripoti += f"\n✅ Unaweza kutumia Tsh {baki:,.2f} zaidi leo."
+        await message.channel.send(ripoti)
+        return
+
+    # 2. Kama unataka kuingiza pesa: TUMA 50000
+    elif ujumbe.startswith("tuma "):
+        try:
+            kiasi_text = ujumbe.replace("tuma ", "").strip()
+            kiasi = float(kiasi_text)
+            
+            salio, matumizi_leo = soma_data()
+            salio += kiasi
+            hifadhi_data(salio, matumizi_leo)
+            await message.channel.send(f"✅ **MAPATO MPYA:** Tsh {kiasi:,.2f} imeingizwa. Salio jipya: Tsh {salio:,.2f}.")
+        except ValueError:
+            await message.channel.send("🛑 **Makosa:** Tafadhali weka kiasi kwa namba. Mfano: `tuma 5000`")
+        return
+
+    # 3. Kama unataka kurekodi matumizi: NIMETUMIA 5000
+    elif ujumbe.startswith("nimetumia "):
+        try:
+            kiasi_text = ujumbe.replace("nimetumia ", "").strip()
+            kiasi = float(kiasi_text)
+            
+            salio, matumizi_leo = soma_data()
+            if kiasi > salio:
+                await message.channel.send(f"🛑 **Haiwezekani!** Salio lako ni Tsh {salio:,.2f} tu. Punguza matumizi!")
+                return
+                
+            salio -= kiasi
+            matumizi_leo += kiasi
+            hifadhi_data(salio, matumizi_leo)
+            
+            jibu = f"💸 **ALERT MATUMIZI:** Umerekodi matumizi ya Tsh {kiasi:,.2f}.\n💰 Salio lililobaki: Tsh {salio:,.2f}."
+            if matumizi_leo > BAJETI_KWA_SIKU:
+                jibu += f"\n🚨 **ONYO KALI:** Umeshavuka kikomo cha leo cha Tsh {BAJETI_KWA_SIKU:,.2f}! Funga pochi yako! 🛑"
+                await message.channel.send(f"🚨 ONYO KALI: Umepitiliza bajeti ya leo ya Tsh {BAJETI_KWA_SIKU:,.2f}!", tts=True)
+            
+            await message.channel.send(jibu)
+        except ValueError:
+            await message.channel.send("🛑 **Makosa:** Tafadhali weka kiasi kwa namba. Mfano: `nimetumia 5000`")
+        return
+
+    # Ruhusu amri zingine kama zipo
+    await bot.process_commands(message)
 
 # ==========================================
 # 4. KUWASHA SEVA ZOTE MBILI
 # ==========================================
-keep_alive()  # Hii inawasha Flask kwanza ili Render isizime
-
-# Hapa itasoma Token kutoka kwenye mipangilio ya siri ya Render (Environment Variables)
+keep_alive()
 TOKEN = os.environ.get('DISCORD_TOKEN')
 if TOKEN:
     bot.run(TOKEN)
-else:
-    print("❌ ERROR: Token ya Discord haijapatikana kwenye Environment Variables!")
