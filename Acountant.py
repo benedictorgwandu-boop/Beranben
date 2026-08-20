@@ -4,6 +4,7 @@ from flask import Flask
 from threading import Thread
 import os
 import re
+import psycopg2  # Maktaba ya kuongea na PostgreSQL database
 
 # ==========================================
 # 1. SEHEMU YA FLASK SERVER
@@ -12,7 +13,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "🤖 Mhasibu BOT Yupo Hai na Salio Lipo Salama!"
+    return "🤖 Mhasibu BOT wa Kudumu Yupo Hai!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -22,24 +23,63 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 2. MFUMO MPYA WA SALIO (Haufutiki kwenye Render)
+# 2. MFUMO WA DATABASE YA KUDUMU (POSTGRESQL)
 # ==========================================
-# Humu tutatumia kumbukumbu ya muda ya RAM. Ili isifutike,
-# itasoma salio la mwanzo kutoka kwenye Render Environment ikiwemo.
-SALIO_RAM = float(os.environ.get('KUMBUKUMBU_SALIO', 0.0))
-MATUMIZI_RAM = float(os.environ.get('KUMBUKUMBU_MATUMIZI', 0.0))
+DB_URL = os.environ.get('DATABASE_URL')
+
+def anzisha_db():
+    if not DB_URL:
+        return
+    conn = psycopg2.connect(DB_URL)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fedha (
+            id SERIAL PRIMARY KEY,
+            salio REAL DEFAULT 0.0,
+            matumizi_leo REAL DEFAULT 0.0
+        )
+    ''')
+    cursor.execute("SELECT COUNT(*) FROM fedha")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO fedha (id, salio, matumizi_leo) VALUES (1, 0.0, 0.0)")
+    conn.commit()
+    conn.close()
 
 def soma_data():
-    global SALIO_RAM, MATUMIZI_RAM
-    return SALIO_RAM, MATUMIZI_RAM
+    if not DB_URL:
+        return 0.0, 0.0
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cursor = conn.cursor()
+        cursor.execute("SELECT salio, matumizi_leo FROM fedha WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return float(row[0]), float(row[1])
+    except Exception as e:
+        print(f"Error reading DB: {e}")
+    return 0.0, 0.0
 
 def hifadhi_data(salio, matumizi_leo):
-    global SALIO_RAM, MATUMIZI_RAM
-    SALIO_RAM = salio
-    MATUMIZI_RAM = matumizi_leo
+    if not DB_URL:
+        return
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE fedha SET salio = %s, matumizi_leo = %s WHERE id = 1", (salio, matumizi_leo))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error writing DB: {e}")
+
+# Anzisha DB mapema
+try:
+    anzisha_db()
+except Exception as e:
+    print(f"Db initialization failed: {e}")
 
 # ==========================================
-# 3. SEHEMU YA DISCORD BOT (CHAT YA KAWAIDA)
+# 3. SEHEMU YA DISCORD BOT
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -49,7 +89,7 @@ BAJETI_KWA_SIKU = 15000
 
 @bot.event
 async def on_ready():
-    print(f"🤖 Bot {bot.user.name} Ameshawaka na Mfumo Imara wa Salio!")
+    print(f"🤖 Bot {bot.user.name} Ameshawaka na Database ya Kudumu!")
 
 @bot.event
 async def on_message(message):
@@ -58,7 +98,6 @@ async def on_message(message):
 
     ujumbe = message.content.lower().strip()
 
-    # 1. Kuangalia Salio: "salio langu" au "hali"
     if ujumbe == "salio langu" or ujumbe == "hali":
         salio, matumizi_leo = soma_data()
         baki = BAJETI_KWA_SIKU - matumizi_leo
@@ -70,11 +109,9 @@ async def on_message(message):
         await message.channel.send(ripoti)
         return
 
-    # 2. Kuingiza Pesa: "tuma 30000" au "tuma 30000 mshahara"
     elif ujumbe.startswith("tuma "):
         namba = re.findall(r'\d+\.?\d*', ujumbe)
         if namba:
-            # REKEBISHO: Kuchukua namba ya kwanza kutoka kwenye list [0]
             kiasi = float(namba[0]) 
             salio, matumizi_leo = soma_data()
             salio += kiasi
@@ -84,11 +121,9 @@ async def on_message(message):
             await message.channel.send("🛑 **Makosa:** Sijaona kiasi cha fedha. Mfano: `tuma 5000`")
         return
 
-    # 3. Kurekodi Matumizi: "nimetumia 2000 chakula"
     elif ujumbe.startswith("nimetumia "):
         namba = re.findall(r'\d+\.?\d*', ujumbe)
         if namba:
-            # REKEBISHO: Kuchukua namba ya kwanza kutoka kwenye list [0]
             kiasi = float(namba[0]) 
             salio, matumizi_leo = soma_data()
             
@@ -112,9 +147,6 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ==========================================
-# 4. KUWASHA SEVA ZOTE MBILI
-# ==========================================
 keep_alive()
 TOKEN = os.environ.get('DISCORD_TOKEN')
 if TOKEN:
